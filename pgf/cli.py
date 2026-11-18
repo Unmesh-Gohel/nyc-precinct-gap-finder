@@ -16,6 +16,12 @@ from .synthetic import generate
 
 def build(raw_df, window_start, window_end, out_dir: Path, top: int, use_llm: bool, sample: bool) -> dict:
     prepared = prepare(raw_df, window_start)
+    # Data-quality check: if NYPD changes its wording, unmatched notes pile up in "other".
+    closed = prepared[prepared["resolution_description"].notna()]
+    other_share = (closed["outcome"] == "other").mean() if len(closed) else 0
+    if other_share > 0.10:
+        print(f"WARNING: {other_share:.0%} of closed complaints matched no outcome rule. "
+              "NYPD may have changed its wording; check pgf/outcomes.py.")
     cells = type_gaps(prepared)
     scores = precinct_scores(cells)
 

@@ -7,7 +7,7 @@ It scores all 77 precincts on three gaps, combines them into one ranked dashboar
 | Gap | Question it answers | Unit |
 |---|---|---|
 | **Time to close** | Do complaints here take longer to close than the city norm? | ratio (1.00x = city norm) |
-| **Closed without a fix** | Do complaints here close as "no evidence" or "gone on arrival" more often? | percentage points vs city |
+| **Closed without a fix** | Do complaints here close as "no evidence", "no violation on arrival" or "unable to gain entry" more often? | percentage points vs city |
 | **Volume growth** | Is complaint volume here growing faster than the city? | percentage points vs city |
 
 Every gap compares a precinct with the city **for the same complaint type**. A precinct with lots of slow complaint types (like abandoned vehicles) does not look "slow" just because of its mix.
@@ -44,7 +44,8 @@ NYC Open Data (311 API)
 
 - **Fair comparisons.** A precinct/type pair needs at least 30 complaints to count. Complaint types need 200 citywide.
 - **Open complaints** and bad timestamps (closed before created) are left out of the time measure.
-- **Outcomes** come from simple keyword rules in `outcomes.py` that anyone can read and audit.
+- **Outcomes** come from simple keyword rules in `outcomes.py` that anyone can read and audit. The rules were checked against every distinct NYPD resolution note in live data (Oct 17 to Nov 15, 2026). If more than 10% of closed complaints match no rule, `pgf` prints a warning, because NYPD has probably changed its wording.
+- **Slow pages are normal.** Deep pages of this dataset can take 20 to 60 seconds each. The client waits up to 3 minutes per page and retries timeouts.
 - The window ends 2 days ago, so most recent complaints have had time to close.
 
 ## LLM guardrails
@@ -63,7 +64,7 @@ The LLM never sees raw complaints, only aggregate numbers. The prompt forbids gu
 pytest -q
 ```
 
-18 tests cover the API client (paging, retries), outcome rules, the gap math, the brief guardrails (a made-up number gets rejected) and an end-to-end build. The sample data plants three known problem precincts, and the tests check the scoring finds all three. GitHub Actions runs the tests on Python 3.11 to 3.13 and builds the sample dashboard on every push.
+29 tests cover the API client (paging, retries, timeouts), every current NYPD outcome wording, outcome rules, the gap math, the brief guardrails (a made-up number gets rejected) and an end-to-end build. The sample data plants three known problem precincts, and the tests check the scoring finds all three. GitHub Actions runs the tests on Python 3.11 to 3.13 and builds the sample dashboard on every push.
 
 ## Roadmap
 

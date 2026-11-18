@@ -28,7 +28,14 @@ class OpenDataClient:
         """GET one page, retrying on rate limits and server errors."""
         delay = 2
         for attempt in range(config.MAX_RETRIES):
-            resp = self.session.get(config.DATASET_URL, params=params, timeout=config.REQUEST_TIMEOUT)
+            try:
+                resp = self.session.get(config.DATASET_URL, params=params, timeout=config.REQUEST_TIMEOUT)
+            except (requests.Timeout, requests.ConnectionError):
+                if attempt == config.MAX_RETRIES - 1:
+                    raise
+                time.sleep(delay)
+                delay *= 2
+                continue
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code in (429, 500, 502, 503, 504) and attempt < config.MAX_RETRIES - 1:
@@ -48,6 +55,7 @@ class OpenDataClient:
         rows: list[dict] = []
         offset = 0
         while True:
+            print(f"  fetching rows {offset:,} to {offset + config.PAGE_SIZE:,}...", flush=True)
             page = self._get({
                 "$select": ",".join(config.FIELDS),
                 "$where": where,

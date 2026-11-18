@@ -16,7 +16,7 @@ FIELDS = [
 ]
 
 PAGE_SIZE = 50_000          # Socrata's max rows per request
-REQUEST_TIMEOUT = 60        # seconds
+REQUEST_TIMEOUT = 180       # seconds. Deep pages on this dataset can take 20-60s.
 MAX_RETRIES = 4
 
 # A precinct/complaint-type cell needs at least this many complaints

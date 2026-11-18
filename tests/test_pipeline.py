@@ -28,6 +28,27 @@ def scored():
     ("The Police Department responded but observed no evidence of the violation at the time.", outcomes.NO_EVIDENCE),
     ("The Police Department responded and upon arrival those responsible for the condition were gone.", outcomes.GONE_ON_ARRIVAL),
     ("The Police Department issued a summons in response to the complaint.", outcomes.ACTION_TAKEN),
+    # Current NYPD wording, from live data (2026-11-18)
+    ("The New York City Police Department responded to the complaint and their investigation determined that no "
+     "criminal violation existed. The condition was corrected without the need to issue a summons or effect an arrest",
+     outcomes.CORRECTED),
+    ("The New York City Police Department responded to the complaint and with the information available observed "
+     "no evidence of a criminal violation at that time", outcomes.NO_EVIDENCE),
+    ("The New York City Police Department responded to the complaint and observed no criminal violation upon their "
+     "arrival", outcomes.GONE_ON_ARRIVAL),
+    ("The New York City Police Department responded to the complaint and their investigation determined that police "
+     "action was not necessary", outcomes.NOT_NECESSARY),
+    ("The New York City Police Department responded to the complaint and their investigation determined that a "
+     "violation of law occurred. Police issued a summons in response to the complaint.", outcomes.ACTION_TAKEN),
+    ("The New York City Police Department responded to the complaint but officers were unable to gain entry into "
+     "the premises", outcomes.NO_ACCESS),
+    ("Your complaint has been received but does not fall under the jurisdiction of the New York City Police "
+     "Department.", outcomes.NOT_JURISDICTION),
+    ("The New York City Police Department responded to the complaint and a report was prepared as part of their "
+     "investigation.", outcomes.ACTION_TAKEN),
+    ("The New York City Police Department responded to the complaint and their investigation determined that a "
+     "violation of law occurred. Police made an arrest in response to the complaint.", outcomes.ACTION_TAKEN),
+    ("The Police Department reviewed your complaint and provided additional information below.", outcomes.OTHER),
     (None, outcomes.OTHER),
     ("", outcomes.OTHER),
 ])
@@ -67,6 +88,16 @@ def test_client_retries_on_429(monkeypatch):
     session = MagicMock()
     session.headers = {}
     session.get.side_effect = [MagicMock(status_code=429), MagicMock(status_code=200, json=MagicMock(return_value=[]))]
+    OpenDataClient(session=session).fetch_nypd_requests(START, START + timedelta(days=1))
+    assert session.get.call_count == 2
+
+
+def test_client_retries_on_timeout(monkeypatch):
+    import requests
+    monkeypatch.setattr("pgf.client.time.sleep", lambda s: None)
+    session = MagicMock()
+    session.headers = {}
+    session.get.side_effect = [requests.Timeout(), MagicMock(status_code=200, json=MagicMock(return_value=[]))]
     OpenDataClient(session=session).fetch_nypd_requests(START, START + timedelta(days=1))
     assert session.get.call_count == 2
 

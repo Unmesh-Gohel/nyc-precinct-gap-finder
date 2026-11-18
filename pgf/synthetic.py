@@ -27,11 +27,12 @@ TYPES = {  # complaint type: (share of volume, typical hours to close)
     "Drinking": (0.02, 2.0),
 }
 
-RESOLUTIONS = {
-    "action": "The Police Department responded to the complaint and took action to fix the condition.",
-    "no_evidence": "The Police Department responded but observed no evidence of the violation at the time.",
-    "gone": "The Police Department responded and upon arrival those responsible for the condition were gone.",
-    "not_necessary": "The Police Department responded to the complaint and determined that police action was not necessary.",
+_NYPD = "The New York City Police Department responded to the complaint and "
+RESOLUTIONS = {  # current NYPD wording, as seen in live data on 2026-11-18
+    "action": _NYPD + "their investigation determined that a violation of law occurred. Police issued a summons in response to the complaint.",
+    "no_evidence": _NYPD + "with the information available observed no evidence of a criminal violation at that time.",
+    "gone": _NYPD + "observed no criminal violation upon their arrival.",
+    "not_necessary": _NYPD + "their investigation determined that police action was not necessary.",
     "duplicate": "The Police Department responded to the complaint and found this was a duplicate of an earlier complaint.",
 }
 
