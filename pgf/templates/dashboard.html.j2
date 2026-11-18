@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NYC Precinct Gap Finder</title>
+<style>
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --mid: #f0efec; --worse: #e34948; --better: #2a78d6; --warn-bg: #fff4d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+            --grid: #2c2c2a; --mid: #383835; --worse: #e66767; --better: #3987e5; --warn-bg: #3a3218; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 40px 0 8px; }
+  .sub { color: var(--ink-2); margin: 0 0 20px; }
+  .banner { background: var(--warn-bg); border-radius: 8px; padding: 10px 14px; margin: 0 0 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 14px 16px; }
+  .tile .v { font-size: 26px; font-weight: 600; }
+  .tile .l { color: var(--ink-2); font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 16px; overflow-x: auto; }
+  .legend { display: flex; gap: 18px; color: var(--ink-2); font-size: 13px; margin: 0 0 10px; flex-wrap: wrap; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+  table { border-collapse: collapse; width: 100%; min-width: 820px; }
+  th { text-align: left; font-weight: 600; color: var(--ink-2); font-size: 12px; padding: 8px 10px;
+       border-bottom: 1px solid var(--grid); cursor: pointer; user-select: none; white-space: nowrap; }
+  th.num, td.num { text-align: right; }
+  th:hover { color: var(--ink); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--grid); vertical-align: middle; white-space: nowrap; }
+  tr:hover td { background: var(--mid); }
+  .bar { position: relative; width: 96px; height: 14px; }
+  .bar::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--muted); }
+  .bar span { position: absolute; top: 2px; height: 10px; }
+  .bar span.w { left: 50%; background: var(--worse); border-radius: 0 4px 4px 0; }
+  .bar span.b { right: 50%; background: var(--better); border-radius: 4px 0 0 4px; }
+  .cell { display: flex; align-items: center; gap: 8px; }
+  .cell .t { min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+  .briefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+  .brief h3 { margin: 0 0 6px; font-size: 16px; }
+  .brief p { margin: 0 0 10px; }
+  .brief ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; }
+  .tag { font-size: 11px; color: var(--muted); }
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--surface); padding: 6px 9px;
+         border-radius: 6px; font-size: 12px; display: none; max-width: 280px; z-index: 10; }
+  .note { color: var(--ink-2); font-size: 13px; }
+  .note li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>NYC Precinct Gap Finder</h1>
+  <p class="sub">How each NYPD precinct's 311 service compares with the citywide norm, complaint type by complaint type.
+    Complaints created {{ window_label }}. Built {{ built }}.</p>
+  {% if sample %}<p class="banner"><strong>Sample data.</strong> These numbers come from generated test data, not real complaints.
+    Run <code>pgf run</code> to build this page from live NYC Open Data.</p>{% endif %}
+
+  <div class="tiles">
+    <div class="tile"><div class="v">{{ "{:,}".format(total) }}</div><div class="l">NYPD 311 complaints in window</div></div>
+    <div class="tile"><div class="v">{{ precincts|length }}</div><div class="l">precincts scored</div></div>
+    <div class="tile"><div class="v">{{ city_median }} h</div><div class="l">citywide median time to close</div></div>
+    <div class="tile"><div class="v">{{ city_unresolved }}%</div><div class="l">citywide share closed without a fix</div></div>
+  </div>
+
+  <h2>All precincts, ranked by combined gap score</h2>
+  <p class="legend">
+    <span><span class="sw" style="background:var(--worse)"></span>Worse than the city norm</span>
+    <span><span class="sw" style="background:var(--better)"></span>Better than the city norm</span>
+    <span>The center line is the city norm; the longest bar is the biggest gap in its column. The combined score compares precincts with each other. Hover for details. Click a header to sort.</span>
+  </p>
+  <div class="card">
+    <table id="t">
+      <thead><tr>
+        <th class="num" data-k="rank">Rank</th><th data-k="precinct">Precinct</th>
+        <th data-k="gap_score">Combined score</th><th data-k="time_gap">Time to close</th>
+        <th data-k="outcome_gap_pp">Closed without a fix</th><th data-k="demand_gap_pp">Volume growth</th>
+        <th class="num" data-k="complaints">Complaints</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h2>Briefs for the top {{ briefs|length }} precincts</h2>
+  <div class="briefs">
+  {% for b in briefs %}
+    <div class="card brief">
+      <h3>Precinct {{ b.precinct }} <span class="tag">rank {{ b.rank }} · {{ "written by LLM, numbers checked" if b.source == "llm" else "template brief" }}</span></h3>
+      <p>{{ b.text }}</p>
+      <ul>
+        {% for d in b.drivers.time[:2] %}<li>{{ d.type }}: {{ d.median_hours }} h median vs {{ d.city_median_hours }} h citywide ({{ d.n }} complaints)</li>{% endfor %}
+        {% for d in b.drivers.outcome[:1] %}<li>{{ d.type }}: {{ d.unresolved_pct }}% closed without a fix vs {{ d.city_unresolved_pct }}% citywide</li>{% endfor %}
+        {% for d in b.drivers.demand[:1] %}<li>{{ d.type }}: {{ d.prior_n }} → {{ d.n }} complaints ({{ d.growth_pct }}% vs {{ d.city_growth_pct }}% citywide)</li>{% endfor %}
+      </ul>
+    </div>
+  {% endfor %}
+  </div>
+
+  <h2>How to read this, and what it is not for</h2>
+  <ul class="note">
+    <li><strong>Time to close:</strong> median hours from complaint to closure, as a multiple of the citywide median for the same complaint type (1.0x = the city norm).</li>
+    <li><strong>Closed without a fix:</strong> share of complaints closed as "no evidence found" or "gone on arrival", minus the citywide share for the same type, in percentage points.</li>
+    <li><strong>Volume growth:</strong> growth in complaints versus the prior window of the same length, minus citywide growth for the same type, in percentage points.</li>
+    <li><strong>Combined score:</strong> the average of the three gaps after putting each on the same scale (z-scores across precincts). A precinct/type pair needs at least {{ min_sample }} complaints to count.</li>
+    <li><strong>Impact and use:</strong> this tool uses only public, aggregate 311 data. It holds no names or addresses. It describes service patterns. It does not explain causes, judge staff, or recommend enforcement. Gaps can reflect staffing, geography, call volume, or how complaints are filed. Treat a gap as a question to look into, not a finding.</li>
+  </ul>
+  <p class="note">Source: <a href="https://data.cityofnewyork.us/Social-Services/311-Service-Requests-from-2010-to-Present/erm2-nwe9">NYC Open Data, 311 Service Requests from 2010 to Present</a> (agency = NYPD).</p>
+</main>
+<div id="tip"></div>
+<script>
+const rows = {{ rows_json|safe }};
+const tip = document.getElementById("tip");
+const fmt = {
+  time_gap: v => v == null ? "n/a" : v.toFixed(2) + "x",
+  outcome_gap_pp: v => v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(1) + " pts",
+  demand_gap_pp: v => v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(1) + " pts",
+  gap_score: v => (v > 0 ? "+" : "") + v.toFixed(2),
+};
+// Each bar shows the gap itself against the city norm (the center line).
+// Time is a ratio, so it is drawn on a log scale: 2x slower and 2x faster are equal lengths.
+const signed = {
+  time_gap: r => r.time_gap == null ? null : Math.log(r.time_gap),
+  outcome_gap_pp: r => r.outcome_gap_pp,
+  demand_gap_pp: r => r.demand_gap_pp,
+  gap_score: r => r.gap_score,
+};
+const maxAbs = {};
+for (const k in signed) maxAbs[k] = Math.max(...rows.map(r => Math.abs(signed[k](r) ?? 0)), 1e-9);
+const help = {
+  time_gap: "median time to close vs city, same complaint types",
+  outcome_gap_pp: "share closed without a fix vs city",
+  demand_gap_pp: "volume growth vs city growth",
+  gap_score: "average of the three standardized gaps",
+};
+function bar(r, k) {
+  const v = signed[k](r);
+  const w = v == null ? 0 : Math.abs(v) / maxAbs[k] * 50;
+  const cls = v > 0 ? "w" : "b";
+  const tipText = `Precinct ${r.precinct}: ${fmt[k](r[k])} (${help[k]})`;
+  return `<div class="cell" data-tip="${tipText}"><div class="bar"><span class="${cls}" style="width:${w}%"></span></div><span class="t">${fmt[k](r[k])}</span></div>`;
+}
+let sortKey = "rank", asc = true;
+function render() {
+  const s = [...rows].sort((a, b) => {
+    const x = a[sortKey] ?? -Infinity, y = b[sortKey] ?? -Infinity;
+    return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1);
+  });
+  document.querySelector("#t tbody").innerHTML = s.map(r => `<tr>
+    <td class="num">${r.rank}</td><td>Precinct ${r.precinct}</td>
+    <td>${bar(r, "gap_score")}</td><td>${bar(r, "time_gap")}</td>
+    <td>${bar(r, "outcome_gap_pp")}</td><td>${bar(r, "demand_gap_pp")}</td>
+    <td class="num">${r.complaints.toLocaleString()}</td></tr>`).join("");
+}
+document.querySelectorAll("th").forEach(th => th.addEventListener("click", () => {
+  const k = th.dataset.k;
+  if (k === sortKey) asc = !asc; else { sortKey = k; asc = k === "rank" || k === "precinct"; }
+  render();
+}));
+document.addEventListener("mousemove", e => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) { tip.style.display = "none"; return; }
+  tip.textContent = el.dataset.tip; tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - 290) + "px"; tip.style.top = (e.clientY + 14) + "px";
+});
+render();
+</script>
+</body>
+</html>
